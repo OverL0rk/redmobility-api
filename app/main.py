@@ -16,7 +16,7 @@ ROOT_DIR = Path(__file__).parent.parent  # backend/
 load_dotenv(ROOT_DIR / ".env")
 
 from .utils import configure_logging
-from .routers import auth, assets, bookings, payments, provider, reviews, admin, client
+from .routers import auth, assets, bookings, payments, provider, reviews, admin, client, media
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -46,6 +46,7 @@ app.include_router(provider.router)
 app.include_router(reviews.router)
 app.include_router(admin.router)
 app.include_router(client.router)
+app.include_router(media.router)
 
 # ── CORS ─────────────────────────────────────────────────────────
 app.add_middleware(

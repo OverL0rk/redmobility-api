@@ -80,6 +80,9 @@ def user_to_dict(user: UserModel) -> dict:
         "verified": user.verified,
         "is_banned": getattr(user, "is_banned", False),
         "ban_reason": getattr(user, "ban_reason", None),
+        "document_type": getattr(user, "document_type", None),
+        "verification_status": getattr(user, "verification_status", "none") or "none",
+        "has_document": bool(getattr(user, "document_media_id", None)),
         "created_at": user.created_at.isoformat() if getattr(user, "created_at", None) else None,
     }
 

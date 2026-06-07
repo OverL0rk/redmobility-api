@@ -2,6 +2,8 @@
 set -e
 echo "[entrypoint] Corriendo migraciones Alembic..."
 alembic upgrade head
+echo "[entrypoint] DDL extra (media + verificacion)..."
+python init_extra.py || echo "[entrypoint] init_extra fallo, continuando"
 echo "[entrypoint] Sembrando datos demo (idempotente)..."
 python crear_admin.py || echo "[entrypoint] crear_admin fallo, continuando"
 python seed_data.py || echo "[entrypoint] seed_data fallo, continuando"

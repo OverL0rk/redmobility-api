@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import stripe
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
@@ -20,6 +20,7 @@ from models import (
     PaymentTransaction as PaymentModel,
     Review as ReviewModel,
     User as UserModel,
+    MediaFile as MediaFileModel,
     BookingStatus,
     UserRole,
 )
@@ -200,6 +201,21 @@ async def get_pending_providers(request: Request, authorization: Optional[str] =
     return [user_to_dict(p) for p in providers]
 
 
+@router.get("/admin/providers/{provider_id}/document")
+async def get_provider_document(provider_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    """Devuelve la imagen del documento de identidad del proveedor (solo admin)."""
+    await require_role(request, "admin", authorization)
+    async with AsyncSessionLocal() as db:
+        provider = (await db.execute(select(UserModel).where(UserModel.id == provider_id))).scalar_one_or_none()
+        if not provider or not getattr(provider, "document_media_id", None):
+            raise HTTPException(status_code=404, detail="Documento no encontrado")
+        media = await db.get(MediaFileModel, provider.document_media_id)
+        if not media:
+            raise HTTPException(status_code=404, detail="Documento no encontrado")
+    return Response(content=media.data, media_type=media.content_type,
+                    headers={"Cache-Control": "private, no-store"})
+
+
 @router.post("/admin/providers/{provider_id}/verify")
 async def verify_provider(provider_id: str, request: Request, authorization: Optional[str] = Header(None)):
     await require_role(request, "admin", authorization)
@@ -209,6 +225,8 @@ async def verify_provider(provider_id: str, request: Request, authorization: Opt
         if not provider:
             raise HTTPException(status_code=404, detail="Provider not found")
         provider.verified = True
+        if hasattr(provider, "verification_status"):
+            provider.verification_status = "approved"
         await db.commit()
     return {"message": "Provider verified"}
 
@@ -226,6 +244,10 @@ async def reject_provider(
         provider = result.scalar_one_or_none()
         if not provider:
             raise HTTPException(status_code=404, detail="Provider not found")
+        provider.verified = False
+        if hasattr(provider, "verification_status"):
+            provider.verification_status = "rejected"
+        await db.commit()
 
     await send_email(
         to_email=provider.email,

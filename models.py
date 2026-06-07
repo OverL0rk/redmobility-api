@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Boolean, ForeignKey, DateTime, Enum, Text, JSON, Integer, Numeric  # Float kept for legacy compatibility only
+from sqlalchemy import Column, String, Float, Boolean, ForeignKey, DateTime, Enum, Text, JSON, Integer, Numeric, LargeBinary  # Float kept for legacy compatibility only
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
@@ -31,8 +31,24 @@ class User(Base):
     verified = Column(Boolean, default=False)
     is_banned = Column(Boolean, default=False, nullable=False)
     ban_reason = Column(String, nullable=True)
+    # Verificación de identidad del proveedor (cédula/pasaporte)
+    document_type = Column(String, nullable=True)        # "cedula" | "pasaporte"
+    document_media_id = Column(String, nullable=True)    # documento subido (media_files)
+    verification_status = Column(String, default="none", nullable=False)  # none|pending|approved|rejected
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     assets = relationship("Asset", back_populates="provider", lazy="selectin", foreign_keys="Asset.provider_id")
+
+
+class MediaFile(Base):
+    """Almacenamiento de imágenes en la base de datos (evita disco efímero en Render).
+    Sirve para fotos de servicios (públicas) y documentos de verificación (privadas)."""
+    __tablename__ = "media_files"
+    id = Column(String, primary_key=True, default=lambda: f"media_{uuid.uuid4().hex}")
+    owner_id = Column(String, nullable=True)
+    content_type = Column(String, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    is_private = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 class Asset(Base):
     __tablename__ = "assets"

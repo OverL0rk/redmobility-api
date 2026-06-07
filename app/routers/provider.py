@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import asyncio
 
 import stripe
-from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -24,6 +24,7 @@ from models import (
     Category as CategoryModel,
     Notification as NotificationModel,
     PaymentTransaction as PaymentModel,
+    User as UserModel,
 )
 from ..dependencies import (
     FRONTEND_URL,
@@ -33,6 +34,7 @@ from ..dependencies import (
     send_email,
 )
 from ..utils import asset_to_dict, booking_to_dict
+from .media import store_media
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
@@ -385,22 +387,56 @@ async def upload_image(
     if fmt not in _PILLOW_FORMAT_MAP:
         raise HTTPException(status_code=422, detail="El archivo no es una imagen válida (jpg/png/webp).")
 
-    # 4. Normalizar extensión según formato Pillow detectado
-    safe_ext = _PILLOW_FORMAT_MAP[fmt]
+    # 5. Guardar la imagen en la base de datos (Render no tiene disco persistente)
+    #    store_media revalida formato/tamaño/resolución mínima.
+    media_id, _ct = await store_media(content, owner_id=user.id, private=False)
 
-    # 5. Guardar en subdirectorio por proveedor — escritura en threadpool para no bloquear event loop
-    provider_dir = UPLOAD_DIR / user.id
-    provider_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{uuid.uuid4().hex}.{safe_ext}"
-    dest = provider_dir / filename
-    await asyncio.to_thread(dest.write_bytes, content)
+    # 6. Devolver URL pública servida por el propio backend
+    base = str(request.base_url).rstrip("/")
+    url = f"{base}/api/media/{media_id}"
+    return {"url": url, "filename": media_id}
 
-    # 6. Devolver URL pública — nginx sirve /uploads/ en la raíz, no bajo el subpath del frontend
-    from urllib.parse import urlparse
-    _parsed = urlparse(FRONTEND_URL)
-    _server_root = f"{_parsed.scheme}://{_parsed.netloc}"
-    url = f"{_server_root}/uploads/{user.id}/{filename}"
-    return {"url": url, "filename": filename}
+
+# ── Verificación de identidad del proveedor (cédula/pasaporte) ─────
+
+@router.post("/provider/verification")
+async def submit_verification(
+    request: Request,
+    document_type: str = Form(...),
+    document_number: str = Form(...),
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(None),
+):
+    """El proveedor sube su cédula o pasaporte. Queda en estado 'pending' hasta que el admin lo apruebe."""
+    user = await require_role(request, "provider", authorization)
+    if document_type not in ("cedula", "pasaporte"):
+        raise HTTPException(status_code=422, detail="Tipo de documento inválido (cedula o pasaporte).")
+    if not (document_number or "").strip():
+        raise HTTPException(status_code=422, detail="Número de documento requerido.")
+    content = await file.read(5 * 1024 * 1024 + 1)
+    media_id, _ = await store_media(content, owner_id=user.id, private=True)
+    async with AsyncSessionLocal() as db:
+        u = await db.get(UserModel, user.id)
+        u.document_type = document_type
+        u.document_id = document_number.strip()
+        u.document_media_id = media_id
+        u.verification_status = "pending"
+        await db.commit()
+    return {"status": "pending", "message": "Documento recibido. Tu cuenta está en revisión."}
+
+
+@router.get("/provider/verification")
+async def get_verification_status(request: Request, authorization: Optional[str] = Header(None)):
+    user = await require_role(request, "provider", authorization)
+    async with AsyncSessionLocal() as db:
+        u = await db.get(UserModel, user.id)
+    return {
+        "verified": bool(u.verified),
+        "verification_status": getattr(u, "verification_status", "none") or "none",
+        "document_type": getattr(u, "document_type", None),
+        "document_number": u.document_id,
+        "has_document": bool(getattr(u, "document_media_id", None)),
+    }
 
 
 # ── Gestión de fechas bloqueadas ──────────────────────────────────
