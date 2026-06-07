@@ -54,6 +54,7 @@ def asset_to_dict(asset: AssetModel) -> dict:
         "pickup_address": asset.pickup_address,
         "what_included": asset.what_included or [],
         "is_active": asset.is_active,
+        "review_status": getattr(asset, "review_status", "approved") or "approved",
         "rating": asset.rating,
         "total_rentals": asset.total_rentals,
         "buffer_before_hours": getattr(asset, "buffer_before_hours", 2.0),

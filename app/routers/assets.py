@@ -48,6 +48,7 @@ async def get_assets(
             select(AssetModel)
             .options(selectinload(AssetModel.images))
             .where(AssetModel.is_active == True)
+            .where(AssetModel.review_status == "approved")
         )
         if type:
             query = query.where(AssetModel.type == type)
@@ -154,6 +155,7 @@ async def get_categories():
                 await db.execute(
                     select(AssetModel.type, func.count(AssetModel.id))
                     .where(AssetModel.is_active == True)
+                    .where(AssetModel.review_status == "approved")
                     .group_by(AssetModel.type)
                 )
             ).all()

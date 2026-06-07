@@ -67,6 +67,7 @@ class Asset(Base):
     pickup_address = Column(String, nullable=True)
     what_included = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True)
+    review_status = Column(String, default="approved", nullable=False)  # pending | approved | rejected
     rating = Column(Float, default=0.0)
     total_rentals = Column(Integer, default=0)
     buffer_before_hours = Column(Float, default=2.0, nullable=False)

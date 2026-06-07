@@ -16,6 +16,7 @@ DDL = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS document_type VARCHAR",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS document_media_id VARCHAR",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_status VARCHAR NOT NULL DEFAULT 'none'",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS review_status VARCHAR NOT NULL DEFAULT 'approved'",
 ]
 
 

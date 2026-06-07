@@ -93,6 +93,7 @@ async def create_asset(asset_data: AssetCreate, request: Request, authorization:
             location_zone=asset_data.location_zone,
             pickup_address=asset_data.pickup_address,
             what_included=asset_data.what_included,
+            review_status="pending",   # requiere aprobación del admin antes de ser público
         )
         db.add(asset)
         await db.flush()
@@ -422,6 +423,15 @@ async def submit_verification(
         u.document_media_id = media_id
         u.verification_status = "pending"
         await db.commit()
+    # Notificar al equipo (si Brevo no está configurado, queda en el log del servidor)
+    try:
+        await send_email(
+            to_email="soporte@redmobility.net",
+            subject="Nueva verificación de proveedor pendiente",
+            html_content=f"<p>El proveedor <b>{user.email}</b> subió su {document_type} (N.º {document_number}). Revísalo en el panel de admin → Verificación.</p>",
+        )
+    except Exception:
+        pass
     return {"status": "pending", "message": "Documento recibido. Tu cuenta está en revisión."}
 
 

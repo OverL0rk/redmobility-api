@@ -30,7 +30,7 @@ from ..dependencies import (
     require_role,
     send_email,
 )
-from ..utils import booking_to_dict, user_to_dict
+from ..utils import booking_to_dict, user_to_dict, asset_to_dict
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
@@ -199,6 +199,55 @@ async def get_pending_providers(request: Request, authorization: Optional[str] =
         )
         providers = result.scalars().all()
     return [user_to_dict(p) for p in providers]
+
+
+@router.get("/admin/assets/pending")
+async def get_pending_assets(request: Request, authorization: Optional[str] = Header(None)):
+    """Servicios publicados por proveedores que esperan aprobación del admin."""
+    from sqlalchemy.orm import selectinload
+    await require_role(request, "admin", authorization)
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(AssetModel).options(selectinload(AssetModel.images)).where(AssetModel.review_status == "pending")
+        )
+        assets = result.scalars().all()
+        providers = {}
+        for a in assets:
+            if a.provider_id not in providers:
+                p = (await db.execute(select(UserModel).where(UserModel.id == a.provider_id))).scalar_one_or_none()
+                providers[a.provider_id] = p.email if p else None
+    out = []
+    for a in assets:
+        d = asset_to_dict(a)
+        d["provider_email"] = providers.get(a.provider_id)
+        out.append(d)
+    return out
+
+
+@router.post("/admin/assets/{asset_id}/approve")
+async def approve_asset(asset_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    await require_role(request, "admin", authorization)
+    async with AsyncSessionLocal() as db:
+        a = await db.get(AssetModel, asset_id)
+        if not a:
+            raise HTTPException(status_code=404, detail="Servicio no encontrado")
+        a.review_status = "approved"
+        a.is_active = True
+        await db.commit()
+    return {"message": "Servicio aprobado"}
+
+
+@router.post("/admin/assets/{asset_id}/reject")
+async def reject_asset(asset_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    await require_role(request, "admin", authorization)
+    async with AsyncSessionLocal() as db:
+        a = await db.get(AssetModel, asset_id)
+        if not a:
+            raise HTTPException(status_code=404, detail="Servicio no encontrado")
+        a.review_status = "rejected"
+        a.is_active = False
+        await db.commit()
+    return {"message": "Servicio rechazado"}
 
 
 @router.get("/admin/providers/{provider_id}/document")
