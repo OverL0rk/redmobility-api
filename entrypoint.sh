@@ -2,8 +2,9 @@
 set -e
 echo "[entrypoint] Corriendo migraciones Alembic..."
 alembic upgrade head
-echo "[entrypoint] Creando usuarios demo (idempotente)..."
+echo "[entrypoint] Sembrando datos demo (idempotente)..."
 python crear_admin.py || echo "[entrypoint] crear_admin fallo, continuando"
+python seed_data.py || echo "[entrypoint] seed_data fallo, continuando"
 echo "[entrypoint] Iniciando gunicorn en puerto ${PORT:-8001}..."
 exec gunicorn app.main:app \
   --workers 2 \
