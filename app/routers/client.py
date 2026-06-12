@@ -227,3 +227,26 @@ async def get_loyalty(request: Request, authorization: Optional[str] = Header(No
         "next_tier": next_tier,
         "points_per_dollar": POINTS_PER_DOLLAR,
     }
+
+
+# ── Upgrade de rol: cliente → proveedor ───────────────────────────
+
+@router.post("/become-provider")
+async def become_provider(request: Request, authorization: Optional[str] = Header(None)):
+    """Convierte la cuenta del cliente en proveedor (queda sin verificar:
+    debe pasar la verificación de identidad antes de publicar)."""
+    from models import User as UserModel, UserRole
+    user = await require_auth(request, authorization)
+    role_val = user.role.value if hasattr(user.role, "value") else user.role
+    if role_val == "provider":
+        return {"message": "Ya eres proveedor", "role": "provider"}
+    if role_val == "admin":
+        raise HTTPException(status_code=400, detail="Un administrador no puede convertirse en proveedor.")
+    async with AsyncSessionLocal() as db:
+        u = await db.get(UserModel, user.id)
+        u.role = UserRole.PROVIDER
+        u.verified = False          # requiere verificación de identidad (cédula/pasaporte)
+        if hasattr(u, "verification_status"):
+            u.verification_status = "none"
+        await db.commit()
+    return {"message": "Ahora eres proveedor. Verifica tu identidad para publicar.", "role": "provider"}
