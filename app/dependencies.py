@@ -111,9 +111,45 @@ async def require_role(
     return user
 
 
-# ── Email (Brevo) ────────────────────────────────────────────────
+# ── Email (SMTP Hostinger o Brevo) ───────────────────────────────
+# Prioridad: 1) SMTP si SMTP_HOST está configurado (ej. smtp.hostinger.com)
+#            2) Brevo API si hay BREVO_API_KEY
+#            3) Log en consola (desarrollo)
+
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASS = os.environ.get("SMTP_PASS", "")
+
+
+def _send_smtp_sync(to_email: str, subject: str, html_content: str):
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.utils import formataddr
+    msg = MIMEText(html_content, "html", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = formataddr((SENDER_NAME, SMTP_USER or SENDER_EMAIL))
+    msg["To"] = to_email
+    if SMTP_PORT == 465:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15) as s:
+            s.login(SMTP_USER, SMTP_PASS)
+            s.sendmail(SMTP_USER, [to_email], msg.as_string())
+    else:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as s:
+            s.starttls()
+            s.login(SMTP_USER, SMTP_PASS)
+            s.sendmail(SMTP_USER, [to_email], msg.as_string())
+
 
 async def send_email(to_email: str, subject: str, html_content: str):
+    if SMTP_HOST and SMTP_USER and SMTP_PASS:
+        try:
+            import asyncio as _asyncio
+            await _asyncio.to_thread(_send_smtp_sync, to_email, subject, html_content)
+            logger.info(f"Email (SMTP) sent: {subject} to {to_email}")
+        except Exception as e:
+            logger.error(f"Email SMTP error: {e}")
+        return
     if not BREVO_API_KEY or BREVO_API_KEY == "TU_BREVO_KEY_AQUI":
         print(f"[EMAIL LOG] To: {to_email} Subject: {subject}")
         return
